@@ -9,6 +9,7 @@ import captureRoutes from './routes/capture.js';
 import analyzeRoutes from './routes/analyze.js';
 import analyzeScriptsRoutes from './routes/analyzeScripts.js';
 import renderRoutes from './routes/render.js';
+import generateFlyerRoutes from './routes/generateFlyer.js';
 import cors from 'cors';
 
 const app = express();
@@ -38,6 +39,7 @@ app.use('/capture-div', captureRoutes);
 app.use('/analyze-html', analyzeRoutes);
 app.use('/analyze-html/scripts', analyzeScriptsRoutes);
 app.use('/render-html', renderRoutes);
+app.use('/generate-flyer', generateFlyerRoutes);
 
 app.get('/', (req, res) => {
     const name = process.env.NAME || 'World';
