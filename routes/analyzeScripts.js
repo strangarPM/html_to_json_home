@@ -7,4 +7,3 @@ router.post('/', analyzeViaScripts);
 
 export default router;
 
-

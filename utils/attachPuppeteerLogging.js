@@ -41,4 +41,3 @@ export function attachPuppeteerLogging(page, context = 'page') {
     });
 }
 
-

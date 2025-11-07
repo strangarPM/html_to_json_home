@@ -7,4 +7,3 @@ router.post('/', renderAndDescribe);
 
 export default router;
 
-

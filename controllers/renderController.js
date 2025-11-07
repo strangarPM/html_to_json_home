@@ -215,4 +215,3 @@ export const renderAndDescribe = async (req, res) => {
     }
 };
 
-

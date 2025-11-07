@@ -135,7 +135,7 @@ async function findText(rootElement) {
                         font_family: nodeData.styles.font_family,
                         font_weight: parseFloat(nodeData.styles.font_weight),
                         font_style: nodeData.styles.font_style,
-                        lineHeight: 1,
+                        lineHeight: nodeData.styles.line_height,
                         alignment: getAlignmentNumberFromWord(nodeData.styles.text_align),
                         land_space: parseFloat(nodeData.styles.letter_spacing) || 0,
                         angle: 0,
@@ -151,6 +151,7 @@ async function findText(rootElement) {
                         is_company_name: 0,
                         palette_color_id: 0,
                         google_fonts_link:  fontUrlAttr,
+                        width: element.width,
                         maxWidth: element.width,
                         maxHeight: element.height,
                         opacity: Math.round(parseFloat(nodeData.styles.opacity) * 100),
@@ -263,26 +264,75 @@ async function extractLineBasedInfo(container) {
     const containerContentTop = containerRect.top
         + (parseFloat(containerStyle.borderTopWidth) || 0)
         + (parseFloat(containerStyle.paddingTop) || 0);
-    const spans = container.querySelectorAll('span'); // select all spans
-    let results = [];
-
-    spans.forEach(span => {
-        const text = span.textContent.trim();
-        if (!text) return;
-
-        // Skip spans that only contain other spans (no direct text)
-        const hasDirectText = Array.from(span.childNodes).some(node => 
+    
+    // Select span, div, and p elements, then filter for text-bearing elements
+    const allElements = container.querySelectorAll('span, div, p');
+    const textElements = Array.from(allElements).filter(el => {
+        // Must have text content
+        const text = el.textContent.trim();
+        if (!text) return false;
+        
+        // Check if element has direct text (not just from children)
+        const hasDirectText = Array.from(el.childNodes).some(node => 
             node.nodeType === Node.TEXT_NODE && node.textContent.trim()
         );
         
-        // If this span has children that are spans with the same text, skip it
-        const childSpans = span.querySelectorAll('span');
-        if (childSpans.length > 0 && !hasDirectText) {
-            return; // Skip parent spans that only contain child spans
+        // For p tags: always include if they have direct text (paragraph elements are meant for text)
+        if (el.tagName === 'P') {
+            return hasDirectText;
         }
+        
+        // For divs: only include if they have a font-family or font-size style (indicating text intent)
+        if (el.tagName === 'DIV') {
+            const style = window.getComputedStyle(el);
+            const hasFontStyling = style.fontFamily && style.fontFamily !== 'inherit';
+            const hasFontSize = el.style.fontSize || el.style.fontFamily;
+            
+            // Skip structural divs (those that contain p tags or other divs/spans without direct text)
+            const childTextElements = el.querySelectorAll('span, div, p');
+            if (childTextElements.length > 0 && !hasDirectText) {
+                return false;
+            }
+            
+            return hasDirectText && (hasFontSize || text.length < 200); // Text divs usually have explicit styling
+        }
+        
+        // For spans: skip if only containing other spans
+        const childSpans = el.querySelectorAll('span');
+        if (childSpans.length > 0 && !hasDirectText) {
+            return false;
+        }
+        
+        return true;
+    });
+    
+    // Helper function to get only direct text (excluding child elements)
+    function getDirectTextOnly(element) {
+        let directText = '';
+        for (let node of element.childNodes) {
+            if (node.nodeType === Node.TEXT_NODE) {
+                directText += node.textContent;
+            }
+        }
+        return directText.trim();
+    }
+
+    let results = [];
+
+    textElements.forEach(span => {
+        // For elements with styled children, get only direct text
+        const hasStyledChildren = span.querySelectorAll('span').length > 0;
+        let text = hasStyledChildren ? getDirectTextOnly(span) : span.textContent.trim();
+        if (!text) return;
 
         // Prefer explicit <br> handling; otherwise detect visual wraps
-        const textWithLineBreaks = (span.querySelector('br')) ? getTextIncludingBr(span) : getTextWithLineBreaks(span);
+        // But for elements with styled children, use direct text only
+        let textWithLineBreaks;
+        if (hasStyledChildren) {
+            textWithLineBreaks = text; // Use direct text only
+        } else {
+            textWithLineBreaks = (span.querySelector('br')) ? getTextIncludingBr(span) : getTextWithLineBreaks(span);
+        }
 
 
         const rect = span.getBoundingClientRect();
@@ -297,6 +347,35 @@ async function extractLineBasedInfo(container) {
 
         const fontUrlAttr = span.getAttribute('data-font-url') || span.dataset?.fontUrl || '';
         
+        // Parse text-shadow
+        let shadowColor = "transparent";
+        let shadowRadius = 0;
+        let shadowOffsetX = 0;
+        let shadowOffsetY = 0;
+        
+        if (style.textShadow && style.textShadow !== 'none') {
+            const shadowMatch = style.textShadow.match(/(-?\d+\.?\d*)px\s+(-?\d+\.?\d*)px\s+(-?\d+\.?\d*)px\s+(rgba?\([^)]+\)|#[0-9a-fA-F]{3,8}|[a-z]+)/);
+            if (shadowMatch) {
+                shadowOffsetX = parseFloat(shadowMatch[1]);
+                shadowOffsetY = parseFloat(shadowMatch[2]);
+                shadowRadius = parseFloat(shadowMatch[3]);
+                shadowColor = shadowMatch[4];
+            }
+        }
+        
+        // Extract backgroundColor
+        const bgColor = style.backgroundColor;
+        const hasBackgroundColor = bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent';
+        
+        // Extract padding
+        const padding = style.padding !== '0px' ? style.padding : null;
+        
+        // Extract borders
+        const borderTop = style.borderTopWidth !== '0px' ? `${style.borderTopWidth} ${style.borderTopStyle} ${style.borderTopColor}` : null;
+        const borderBottom = style.borderBottomWidth !== '0px' ? `${style.borderBottomWidth} ${style.borderBottomStyle} ${style.borderBottomColor}` : null;
+        const borderLeft = style.borderLeftWidth !== '0px' ? `${style.borderLeftWidth} ${style.borderLeftStyle} ${style.borderLeftColor}` : null;
+        const borderRight = style.borderRightWidth !== '0px' ? `${style.borderRightWidth} ${style.borderRightStyle} ${style.borderRightColor}` : null;
+        
         console.log({
             "CHECK": true,
             "text": finalText,
@@ -310,7 +389,11 @@ async function extractLineBasedInfo(container) {
             "marginLeft": parseFloat(style.marginLeft),
             "marginTop": parseFloat(style.marginTop),
             "marginRight": parseFloat(style.marginRight),
-            "marginBottom": parseFloat(style.marginBottom)
+            "marginBottom": parseFloat(style.marginBottom),
+            "shadowColor": shadowColor,
+            "shadowRadius": shadowRadius,
+            "backgroundColor": hasBackgroundColor ? bgColor : null,
+            "padding": padding
         });
 
         results.push({
@@ -322,21 +405,22 @@ async function extractLineBasedInfo(container) {
             font_family: style.fontFamily,
             font_style: style.fontStyle,
             font_weight: parseFloat(style.fontWeight),
-            lineHeight: 1,
+            lineHeight: style.lineHeight,
             alignment: getAlignmentNumberFromWord(style.textAlign),
             angle: 0,
             stroke: null,
             strokeWidth: 0,
-            shadowColor: "transparent",
-            shadowRadius: 0,
-            shadowOffsetX: 0,
-            shadowOffsetY: 0,
+            shadowColor: shadowColor,
+            shadowRadius: shadowRadius,
+            shadowOffsetX: shadowOffsetX,
+            shadowOffsetY: shadowOffsetY,
             // pak_index: visualRank,
             pak_index: zIndex,
             is_brand_name: 0,
             is_company_name: 0,
             palette_color_id: 0,
             google_fonts_link: fontUrlAttr || "",
+            width: Math.round(rect.width),
             maxWidth: Math.round(rect.width),
             maxHeight: Math.round(rect.height),
             opacity: Math.round(parseFloat(style.opacity) * 100),
@@ -345,7 +429,13 @@ async function extractLineBasedInfo(container) {
             vert_space: parseFloat(style.letterSpacing) || 0,
             // layer_index: visualRank,
             layer_index: zIndex,
-            css_z_index: zIndex
+            css_z_index: zIndex,
+            backgroundColor: hasBackgroundColor ? bgColor : null,
+            padding: padding,
+            borderTop: borderTop,
+            borderBottom: borderBottom,
+            borderLeft: borderLeft,
+            borderRight: borderRight
         });
     });
 

@@ -78,19 +78,41 @@ export const analyzeViaScripts = async (req, res) => {
             const mainContainer = renderArea.querySelector('div');
             if (!mainContainer) throw new Error('Main container <div> not found inside renderArea');
 
+            // --- CRITICAL FIX: WAIT FOR ALL FONTS TO LOAD ---
+            // This ensures the browser has rendered the text with the final font-family
+            // before measuring its position and size.
+            try {
+                // Wait for up to 5 seconds for all fonts to finish loading
+                await document.fonts.ready.then(() => {
+                    console.log('✅ All fonts have loaded successfully.');
+                }).catch(err => {
+                    console.error('⚠️ Font loading timeout or error:', err);
+                });
+            } catch (e) {
+                // document.fonts.ready might not be available or may fail silently in some contexts.
+                // Log and continue, as the coordinates will be the best available.
+                console.warn('Could not wait for document.fonts.ready:', e);
+            }
+
+
             const rect = mainContainer.getBoundingClientRect();
             template_json.height = Math.round(rect.height);
             template_json.width = Math.round(rect.width);
             template_json.display_height = template_json.height;
             template_json.display_width = template_json.width;
 
-            // text and stickers
-            // extractLineBasedInfo and getStyleJson are provided by injected scripts
+            // text, stickers, and SVGs
+            // extractLineBasedInfo, getStyleJson, and getSvgJson are provided by injected scripts
             const text_json = await extractLineBasedInfo(mainContainer);
             const sticker_json = await getStyleJson(renderArea);
+            const svg_json = await getSvgJson(renderArea);
 
             template_json.text_json = text_json;
             template_json.sticker_json = sticker_json;
+            template_json.svg_json = svg_json;
+
+            // const text_json = await findText(mainContainer);
+            // template_json.text_json = text_json;
             return template_json;
         }, htmlContent);
 
@@ -104,5 +126,4 @@ export const analyzeViaScripts = async (req, res) => {
         return res.status(500).json({ error: e.message });
     }
 };
-
 

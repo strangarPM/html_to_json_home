@@ -59,4 +59,3 @@ export async function captureDivHtml({ htmlContent, cssContent = '', selector = 
     }
 }
 
-

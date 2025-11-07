@@ -144,9 +144,55 @@ async function getStyleJson (container) {
 
         const isVisuallySignificantStyle = hasVisuallySignificantStyle(div);
         if (isVisuallySignificantStyle) {
-            // div.style.transform = 'none';
+            // Get rotation angle before getting dimensions
+            const rotationAngle = getRotationAngle(style.transform);
+            
+            // Temporarily remove transform to get untransformed dimensions and position
+            const originalTransform = div.style.transform;
+            div.style.transform = 'none';
+            const rectWithoutTransform = div.getBoundingClientRect();
+            div.style.transform = originalTransform; // restore immediately
+            
+            // Get the transformed rect for reference
             const rect = div.getBoundingClientRect();
-            const { width: divWidth, height: divHeight, left: divLeft, top: divTop } = getDivWidthAndHeight(rect);
+            
+            // Get actual dimensions from style (not affected by filter blur expansion or rotation)
+            // If width/height are set in style, use those; otherwise fall back to untransformed rect
+            // For border-based shapes (triangles), width/height might be 0, so we must use rect
+            const styleWidth = parseFloat(style.width);
+            const styleHeight = parseFloat(style.height);
+            
+            // Check if element has borders (they add to visual dimensions)
+            const hasBorders = (parseFloat(style.borderTopWidth) || 0) + 
+                              (parseFloat(style.borderRightWidth) || 0) + 
+                              (parseFloat(style.borderBottomWidth) || 0) + 
+                              (parseFloat(style.borderLeftWidth) || 0) > 0;
+            
+            // If both style width/height are 0 or very small, but rect has dimensions,
+            // it's likely a border-based shape (like CSS triangles)
+            const isBorderShape = (styleWidth === 0 || !styleWidth) && (styleHeight === 0 || !styleHeight) && rectWithoutTransform.width > 0 && rectWithoutTransform.height > 0;
+            
+            // For elements with borders, use untransformed rect dimensions to include border width
+            // For border-based shapes (triangles), use untransformed rect dimensions
+            // Otherwise, use style dimensions to avoid blur expansion
+            const actualWidth = (isBorderShape || hasBorders) ? rectWithoutTransform.width : (styleWidth || rectWithoutTransform.width);
+            const actualHeight = (isBorderShape || hasBorders) ? rectWithoutTransform.height : (styleHeight || rectWithoutTransform.height);
+            
+            // Calculate the center point of the rotated element
+            const rotatedCenterX = rect.left + rect.width / 2;
+            const rotatedCenterY = rect.top + rect.height / 2;
+            
+            // The position should be the top-left of where the element would be without rotation
+            // but keeping its center at the same place
+            const divLeft = rotatedCenterX - actualWidth / 2;
+            const divTop = rotatedCenterY - actualHeight / 2;
+            
+            const { width: divWidth, height: divHeight } = {
+                width: actualWidth.toFixed(2),
+                height: actualHeight.toFixed(2),
+                left: divLeft.toFixed(2),
+                top: divTop.toFixed(2)
+            };
 
             
 
@@ -169,7 +215,6 @@ async function getStyleJson (container) {
                     : (rel.top - containerContentTop)
             ).toFixed(2);
             const zIndex = style.zIndex === 'auto' ? getEffectiveZIndex(div) : style.zIndex;
-            const rotationAngle = getRotationAngle(style.transform);
             const visualRank = getVisualLayerRank(div, rect);
             const hasSingleImage = div.children.length === 1 && div.children[0].tagName === 'IMG';
 
@@ -195,14 +240,32 @@ async function getStyleJson (container) {
 
             
             
-            divClone.style.width = divWidth+ 'px';
-            divClone.style.height = divHeight + 'px';
+            // For border-based shapes (triangles) or elements with borders,
+            // preserve original width/height to maintain border rendering
+            // For normal elements, set the calculated dimensions
+            if (!isBorderShape && !hasBorders) {
+                divClone.style.width = divWidth+ 'px';
+                divClone.style.height = divHeight + 'px';
+            } else if (hasBorders) {
+                // For elements with borders, set explicit dimensions to ensure proper rendering
+                divClone.style.width = divWidth + 'px';
+                divClone.style.height = divHeight + 'px';
+                divClone.style.boxSizing = 'border-box'; // Ensure border is included in dimensions
+            }
+            // Reset positioning to relative for screenshot
             divClone.style.left = 0;
             divClone.style.top = 0;
             divClone.style.right = 0;
             divClone.style.bottom = 0;
             divClone.style.position = 'relative';
             divClone.style.transform = 'none';
+            
+            // For elements with borders, ensure they render as block to maintain dimensions
+            // when content is not cloned (text is handled separately in text_json)
+            if (hasBorders) {
+                divClone.style.display = 'block';
+            }
+            // Keep the filter for visual effects (blur, etc.)
 
 
             // Create the visual representation div
@@ -234,14 +297,23 @@ async function getStyleJson (container) {
             visualDiv.appendChild(properties);*/
 
 
-            // Send only the div HTML to API
+            // Wrap in a container to constrain blur/filter overflow
+            const wrapper = document.createElement('div');
+            wrapper.style.width = divWidth + 'px';
+            wrapper.style.height = divHeight + 'px';
+            // For border-based shapes or elements with borders, don't use overflow hidden as it might clip
+            wrapper.style.overflow = (isBorderShape || hasBorders) ? 'visible' : 'hidden';
+            wrapper.style.position = 'relative';
+            wrapper.appendChild(divClone);
+            
+            // Send wrapped HTML to API for accurate dimensions
             await fetch((window.CAPTURE_DIV_URL || '/capture-div'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    htmlContent: divClone.outerHTML
+                    htmlContent: wrapper.outerHTML
                 })
             })
                 .then((response) => response.json())
@@ -308,13 +380,85 @@ function hasVisuallySignificantStyle(div) {
     const bgImage = style.backgroundImage;
     const hasBackgroundImage = bgImage && bgImage !== 'none';
 
-    // 4. Borders
-    const hasBorder = (style.borderWidth && style.borderWidth !== '0px') &&
-                      (style.borderStyle && style.borderStyle !== 'none');
+    // 4. Borders - check all sides individually
+    const hasBorderTop = (style.borderTopWidth && style.borderTopWidth !== '0px') &&
+                         (style.borderTopStyle && style.borderTopStyle !== 'none');
+    const hasBorderRight = (style.borderRightWidth && style.borderRightWidth !== '0px') &&
+                           (style.borderRightStyle && style.borderRightStyle !== 'none');
+    const hasBorderBottom = (style.borderBottomWidth && style.borderBottomWidth !== '0px') &&
+                            (style.borderBottomStyle && style.borderBottomStyle !== 'none');
+    const hasBorderLeft = (style.borderLeftWidth && style.borderLeftWidth !== '0px') &&
+                          (style.borderLeftStyle && style.borderLeftStyle !== 'none');
+    const hasBorder = hasBorderTop || hasBorderRight || hasBorderBottom || hasBorderLeft;
 
     // 5. Box shadow
     const hasBoxShadow = style.boxShadow && style.boxShadow !== 'none';
 
-    // 6. Combine all checks
-    return hasClipPath || hasBackgroundColor || hasBackgroundImage || hasBorder || hasBoxShadow;
+    // 6. Contains an image tag
+    const hasImageChild = div.children.length === 1 && div.children[0].tagName === 'IMG';
+
+    // 7. Combine all checks
+    return hasClipPath || hasBackgroundColor || hasBackgroundImage || hasBorder || hasBoxShadow || hasImageChild;
+}
+
+// Extract SVG elements and convert to JSON
+async function getSvgJson(container) {
+    const svgs = container.querySelectorAll('svg');
+    const svg_json = [];
+
+    for (let i = 0; i < svgs.length; i++) {
+        const svg = svgs[i];
+        const rect = svg.getBoundingClientRect();
+        const style = window.getComputedStyle(svg);
+        const containerRect = container.getBoundingClientRect();
+
+        // Get SVG attributes
+        const width = parseFloat(svg.getAttribute('width')) || rect.width;
+        const height = parseFloat(svg.getAttribute('height')) || rect.height;
+        const viewBox = svg.getAttribute('viewBox') || `0 0 ${width} ${height}`;
+        const fill = svg.getAttribute('fill') || style.fill || '#000000';
+
+        // Get position relative to container
+        const xPos = (rect.left - containerRect.left).toFixed(2);
+        const yPos = (rect.top - containerRect.top).toFixed(2);
+
+        // Get z-index
+        const zIndex = style.zIndex === 'auto' ? getEffectiveZIndex(svg) : style.zIndex;
+
+        // Get opacity
+        const opacity = parseFloat(style.opacity) || 1;
+
+        // Get the SVG content as a string
+        const svgContent = svg.outerHTML;
+
+        // Convert SVG to base64 data URL for easy rendering
+        const svgBlob = new Blob([svgContent], { type: 'image/svg+xml' });
+        const svgUrl = URL.createObjectURL(svgBlob);
+        
+        // Read blob as data URL
+        const svgDataUrl = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(svgBlob);
+        });
+
+        svg_json.push({
+            xPos: xPos,
+            yPos: yPos,
+            width: width.toFixed(2),
+            height: height.toFixed(2),
+            viewBox: viewBox,
+            fill: fill,
+            opacity: Math.round(opacity * 100),
+            layer_index: zIndex,
+            src: svgContent,
+            svg_data_url: svgDataUrl,
+            angle: 0 // SVGs can have transforms but keeping simple for now
+        });
+
+        // Clean up the object URL
+        URL.revokeObjectURL(svgUrl);
+    }
+
+    return svg_json;
 }
