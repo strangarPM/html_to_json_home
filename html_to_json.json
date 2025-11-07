@@ -1,0 +1,100 @@
+{
+  "frame_json": {
+    "frame_image": "",
+    "frame_color": ""
+  },
+  "background_json": {
+    "background_image": "",
+    "background_color": "#FFFFFF",
+    "is_brand_background": 0,
+    "palette_color_id": 0,
+    "background_gradient_id": null
+  },
+  "image_sticker_json": [
+    {
+      "id": 1,
+      "image_url": "https://example.com/mainImage.png",
+      "xPos": 150,
+      "yPos": 300,
+      "width": 450,
+      "height": 500,
+      "angle": 0,
+      "opacity": 100,
+      "scale": 1.0,
+      "cornerRadius": 0,
+      "maskType": "none",
+      "isReplaceable": 1,
+      "isLocked": 0,
+      "layer_index": 1,
+      "css_z_index": 1
+    }
+  ],
+  "sticker_json": [
+    {
+      "id": 1,
+      "sticker_type": 1,
+      "sticker_image": "https://example.com/decor-star.png",
+      "xPos": 50,
+      "yPos": 90,
+      "width": 120,
+      "height": 120,
+      "angle": 0,
+      "opacity": 100,
+      "is_round": 0,
+      "layer_index": 2,
+      "css_z_index": 2
+    }
+  ],
+  "text_json": [
+    {
+      "id": 1,
+      "text": "Grand Opening",
+      "color": "#FF0000",
+      "font_family": "Poppins-Bold",
+      "size": 48,
+      "alignment": 1,
+      "xPos": 200,
+      "yPos": 100,
+      "maxWidth": 600,
+      "maxHeight": 120,
+      "angle": 0,
+      "opacity": 100,
+      "backgroundColor": "transparent",
+      "gradientId": null,
+      "shadowColor": "transparent",
+      "shadowRadius": 0,
+      "shadowOffsetX": 0,
+      "shadowOffsetY": 0,
+      "isLocked": 0,
+      "layer_index": 3,
+      "css_z_index": 3
+    }
+  ],
+  "gradient_json": [
+    {
+      "id": 1,
+      "type": "linear",
+      "colors": [
+        "#FF512F",
+        "#DD2476"
+      ],
+      "startPoint": {
+        "x": 0,
+        "y": 0
+      },
+      "endPoint": {
+        "x": 1,
+        "y": 1
+      }
+    }
+  ],
+  "sample_image": "sample.jpg",
+  "width": 1080,
+  "height": 1350,
+  "display_width": 1080,
+  "display_height": 1350,
+  "display_size_type": "px",
+  "page_id": 1,
+  "is_featured": 0,
+  "is_portrait": 1
+}
